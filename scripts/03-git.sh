@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # 03-git.sh — Latest git, configured gitconfig, GitHub CLI
-set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/00-helpers.sh"
+strict_mode
 
 # ── Latest Git via PPA ────────────────────────────────────────────────────────
-log_step "Adding git-core PPA for latest Git"
-sudo add-apt-repository -y ppa:git-core/ppa
-sudo apt-get update -qq
-sudo apt-get install -y git
+add_ppa "git-core/ppa"
+run_sudo apt-get update -qq
+apt_ensure git
 log_success "Git $(git --version) installed"
 
 # ── Configure gitconfig from template ─────────────────────────────────────────
@@ -24,11 +23,14 @@ if [[ -z "$GIT_EMAIL" ]]; then
 fi
 
 log_step "Writing ~/.gitconfig"
-sed \
-  -e "s|{{GIT_USER_NAME}}|$GIT_NAME|g" \
-  -e "s|{{GIT_USER_EMAIL}}|$GIT_EMAIL|g" \
-  "$REPO_ROOT/dotfiles/gitconfig.template" > "$HOME/.gitconfig"
-
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo -e "${YELLOW}[DRY-RUN]${NC} Would write ~/.gitconfig for $GIT_NAME <$GIT_EMAIL>"
+else
+  sed \
+    -e "s|{{GIT_USER_NAME}}|$GIT_NAME|g" \
+    -e "s|{{GIT_USER_EMAIL}}|$GIT_EMAIL|g" \
+    "$REPO_ROOT/dotfiles/gitconfig.template" > "$HOME/.gitconfig"
+fi
 log_success "~/.gitconfig configured for $GIT_NAME <$GIT_EMAIL>"
 
 # ── GitHub CLI ────────────────────────────────────────────────────────────────
@@ -39,8 +41,8 @@ if ! has_cmd gh; then
     "/etc/apt/keyrings/githubcli-archive-keyring.gpg" \
     "https://cli.github.com/packages/githubcli-archive-keyring.gpg" \
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
-  sudo apt-get update -qq
-  sudo apt-get install -y gh
+  run_sudo apt-get update -qq
+  apt_ensure gh
   log_success "gh $(gh --version | head -1) installed"
 else
   log_info "gh already installed — skipping"

@@ -1,44 +1,60 @@
 #!/usr/bin/env bash
-# 06-devtools.sh — NVM + Node.js LTS, optional Bun
-set -euo pipefail
+# 06-devtools.sh — Node.js (via NVM) + optional Bun
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/00-helpers.sh"
+strict_mode
 
-# ── NVM ───────────────────────────────────────────────────────────────────────
-NVM_DIR="$HOME/.nvm"
+# ── NVM + Node.js LTS ────────────────────────────────────────────────────────
+NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+
 if [[ ! -d "$NVM_DIR" ]]; then
-  log_step "Installing NVM (Node Version Manager)"
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+  log_step "Installing NVM"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "${YELLOW}[DRY-RUN]${NC} Would install NVM"
+  else
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
+  fi
   log_success "NVM installed"
 else
-  log_info "NVM already installed at $NVM_DIR"
+  log_info "NVM already installed — skipping"
 fi
 
-# Load NVM in current session so we can install Node
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+# Source NVM for the rest of the script
+export NVM_DIR
+# shellcheck source=/dev/null
+[[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh"
 
-# ── Node.js LTS ───────────────────────────────────────────────────────────────
-if has_cmd nvm; then
-  log_step "Installing Node.js LTS"
-  nvm install --lts
-  nvm use --lts
-  nvm alias default 'lts/*'
-  log_success "Node.js $(node --version) / npm $(npm --version) installed"
-else
-  log_warning "NVM not in PATH in this shell — Node.js will be installed on first 'zsh' launch"
-fi
-
-# ── Bun (optional) ────────────────────────────────────────────────────────────
-if ! has_cmd bun; then
-  read -rp "Install Bun (fast JS runtime/bundler)? [y/N]: " INSTALL_BUN
-  if [[ "${INSTALL_BUN,,}" == "y" ]]; then
-    log_step "Installing Bun"
-    curl -fsSL https://bun.sh/install | bash
-    log_success "Bun installed — restart shell or run: source ~/.bashrc"
+if has_cmd nvm 2>/dev/null || type nvm &>/dev/null; then
+  if ! has_cmd node; then
+    log_step "Installing Node.js LTS via NVM"
+    if [[ "$DRY_RUN" != "true" ]]; then
+      nvm install --lts
+      nvm alias default lts/*
+    fi
+    log_success "Node.js LTS installed"
   else
-    log_info "Bun install skipped"
+    log_info "Node.js already installed — $(node --version)"
+  fi
+else
+  log_warning "NVM not available in current shell — node install skipped"
+fi
+
+# ── Bun (optional, fast JS runtime) ──────────────────────────────────────────
+if ! has_cmd bun; then
+  if [[ "$UNATTENDED" == "true" ]]; then
+    INSTALL_BUN="${INSTALL_BUN:-no}"
+  else
+    read -rp "Install Bun runtime? [y/N] " INSTALL_BUN
+  fi
+  if [[ "$INSTALL_BUN" =~ ^[Yy] ]]; then
+    log_step "Installing Bun"
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo -e "${YELLOW}[DRY-RUN]${NC} Would install Bun"
+    else
+      curl -fsSL https://bun.sh/install | bash
+    fi
+    log_success "Bun installed"
   fi
 else
   log_info "Bun already installed — skipping"

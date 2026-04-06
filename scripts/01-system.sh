@@ -1,37 +1,42 @@
 #!/usr/bin/env bash
 # 01-system.sh — System packages and essentials
-# Installs: build tools, curl, git-core PPA, fonts, wl-clipboard, eza, zoxide, bat, fd, fzf, ripgrep, jq, etc.
-set -euo pipefail
+# Installs: build tools, curl, fonts, wl-clipboard, eza, zoxide, bat, fd, fzf, ripgrep, jq, stow, etc.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/00-helpers.sh"
+strict_mode
+
+# ── Pinned versions (override with --latest logic in future) ──────────────────
+EZA_VERSION="${EZA_VERSION:-0.21.2}"
 
 # ── apt update ────────────────────────────────────────────────────────────────
 log_step "Updating package lists"
-sudo apt-get update -qq
+run_sudo apt-get update -qq
 
-# ── Core utilities ────────────────────────────────────────────────────────────
+# ── Core utilities (idempotent — apt_ensure skips installed pkgs) ─────────────
 log_step "Installing core utilities"
-sudo apt-get install -y \
+apt_ensure \
   curl wget git build-essential apt-transport-https \
   ca-certificates gnupg software-properties-common \
   lsb-release unzip zip \
-  zsh \
+  zsh stow \
   wl-clipboard xclip \
   fonts-powerline fontconfig \
   zoxide bat fd-find fzf ripgrep jq \
   xdg-utils
 
 # ── eza (modern ls replacement) ───────────────────────────────────────────────
-# eza is not in Ubuntu 20.04/22.04 apt repos — install from their official deb
 if ! has_cmd eza; then
-  log_step "Installing eza"
-  EZA_VER=$(curl -fsSL "https://api.github.com/repos/eza-community/eza/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
-  EZA_URL="https://github.com/eza-community/eza/releases/latest/download/eza_x86_64-unknown-linux-gnu.tar.gz"
-  curl -fsSL "$EZA_URL" -o /tmp/eza.tar.gz
-  sudo tar xzf /tmp/eza.tar.gz -C /usr/local/bin eza
-  rm -f /tmp/eza.tar.gz
-  log_success "eza $EZA_VER installed"
+  log_step "Installing eza v${EZA_VERSION}"
+  EZA_URL="https://github.com/eza-community/eza/releases/download/v${EZA_VERSION}/eza_x86_64-unknown-linux-gnu.tar.gz"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "${YELLOW}[DRY-RUN]${NC} Download + install eza $EZA_VERSION"
+  else
+    curl -fsSL "$EZA_URL" -o /tmp/eza.tar.gz
+    sudo tar xzf /tmp/eza.tar.gz -C /usr/local/bin eza
+    rm -f /tmp/eza.tar.gz
+  fi
+  log_success "eza ${EZA_VERSION} installed"
 else
   log_info "eza already installed — skipping"
 fi
@@ -52,55 +57,61 @@ fi
 
 # ── Nerd Font (required for agnoster prompt) ──────────────────────────────────
 FONT_DIR="$HOME/.local/share/fonts"
-if ! fc-list | grep -qi "MesloLGS"; then
+if ! fc-list 2>/dev/null | grep -qi "MesloLGS"; then
   log_step "Installing MesloLGS NF (Powerline / Nerd Font)"
-  mkdir -p "$FONT_DIR"
-  BASE_URL="https://github.com/romkatv/powerlevel10k-media/raw/master"
-  for font in \
-    "MesloLGS NF Regular.ttf" \
-    "MesloLGS NF Bold.ttf" \
-    "MesloLGS NF Italic.ttf" \
-    "MesloLGS NF Bold Italic.ttf"; do
-    curl -fsSL "$BASE_URL/${font// /%20}" -o "$FONT_DIR/$font"
-  done
-  fc-cache -f "$FONT_DIR"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "${YELLOW}[DRY-RUN]${NC} Would download 4 MesloLGS NF font files"
+  else
+    mkdir -p "$FONT_DIR"
+    BASE_URL="https://github.com/romkatv/powerlevel10k-media/raw/master"
+    for font in \
+      "MesloLGS NF Regular.ttf" \
+      "MesloLGS NF Bold.ttf" \
+      "MesloLGS NF Italic.ttf" \
+      "MesloLGS NF Bold Italic.ttf"; do
+      curl -fsSL "$BASE_URL/${font// /%20}" -o "$FONT_DIR/$font"
+    done
+    fc-cache -f "$FONT_DIR"
+  fi
   log_success "MesloLGS NF installed — set it as your terminal font"
 else
   log_info "MesloLGS NF already installed — skipping"
 fi
 
 # ── keyd (keyboard remapping — Super→Ctrl for clipboard) ─────────────────────
-# The Ghostty config relies on keyd for Super+C/V/X clipboard shortcuts.
 if ! has_cmd keyd; then
   log_step "Installing keyd"
-  sudo apt-get install -y keyd 2>/dev/null || {
-    # keyd is not in older Ubuntu repos — build from source
+  run_sudo apt-get install -y keyd 2>/dev/null || {
     log_warning "keyd not in apt — installing from source"
-    sudo apt-get install -y libsystemd-dev
-    KEYD_TMP=$(mktemp -d)
-    git clone --depth=1 https://github.com/rvaiya/keyd.git "$KEYD_TMP"
-    make -C "$KEYD_TMP"
-    sudo make -C "$KEYD_TMP" install
-    rm -rf "$KEYD_TMP"
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo -e "${YELLOW}[DRY-RUN]${NC} Would build keyd from source"
+    else
+      apt_ensure libsystemd-dev
+      KEYD_TMP=$(mktemp -d)
+      git clone --depth=1 https://github.com/rvaiya/keyd.git "$KEYD_TMP"
+      make -C "$KEYD_TMP"
+      sudo make -C "$KEYD_TMP" install
+      rm -rf "$KEYD_TMP"
+    fi
   }
-  sudo systemctl enable --now keyd
-  log_step "Writing keyd config (Super+C/X/V → Ctrl+C/X/V)"
-  sudo mkdir -p /etc/keyd
+  run_sudo systemctl enable --now keyd
+
   if [[ ! -f /etc/keyd/default.conf ]]; then
-    sudo tee /etc/keyd/default.conf > /dev/null <<'EOF'
+    log_step "Writing keyd config"
+    run_sudo mkdir -p /etc/keyd
+    if [[ "$DRY_RUN" != "true" ]]; then
+      sudo tee /etc/keyd/default.conf > /dev/null <<'KEYDEOF'
 [ids]
 *
 
 [main]
-# Remap CapsLock to Escape
 capslock = esc
-
-# Remap Super+C/X/V to Ctrl+C/X/V (clipboard shortcuts)
 meta.c = C-c
 meta.x = C-x
 meta.v = C-v
-EOF
-    sudo systemctl restart keyd
+KEYDEOF
+      sudo systemctl restart keyd
+    fi
   fi
   log_success "keyd installed and configured"
 else
