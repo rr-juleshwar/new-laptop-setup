@@ -137,6 +137,21 @@ stow -d dotfiles -t ~ -D zsh ghostty
 
 `repos.txt` lists Rapyuta private repos cloned into `~/Workspace/`. Edit before running if the list changes.
 
+## Local testing with Docker
+
+Test the setup scripts in a disposable container without touching your host machine:
+
+```bash
+make test-docker                # Dry-run on Ubuntu 20.04 (default)
+make test-docker UBUNTU=22.04   # Dry-run on Ubuntu 22.04
+make test-docker UBUNTU=24.04   # Dry-run on Ubuntu 24.04
+make test-docker-live           # Interactive shell for manual testing
+```
+
+The Docker test environment creates a non-root user with sudo, sets up
+env vars for unattended mode, and runs `setup.sh --dry-run --unattended`
+by default.
+
 ## CI
 
 GitHub Actions runs on every push:
