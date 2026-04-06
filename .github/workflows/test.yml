@@ -1,0 +1,33 @@
+name: Setup Script CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+      - name: Lint all scripts
+        run: shellcheck setup.sh scripts/*.sh
+
+  dry-run:
+    name: Dry-run (Ubuntu ${{ matrix.os }})
+    needs: shellcheck
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dry-run full setup
+        run: bash setup.sh --dry-run --unattended
+        env:
+          RR_GIT_NAME: "CI Test"
+          RR_GIT_EMAIL: "ci@test.dev"
