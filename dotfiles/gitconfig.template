@@ -1,0 +1,9 @@
+[credential "https://github.com"]
+	helper =
+	helper = !/usr/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper =
+	helper = !/usr/bin/gh auth git-credential
+[user]
+	name = {{GIT_USER_NAME}}
+	email = {{GIT_USER_EMAIL}}

@@ -1,0 +1,8 @@
+theme = light:Neobones Light,dark:Cyberdyne
+theme = Neobones Dark
+# keyd already translates Super+C/X/V to Ctrl+C/X/V globally.
+# In Ghostty, reinterpret those Ctrl shortcuts as clipboard actions.
+keybind = performable:ctrl+c=copy_to_clipboard
+keybind = ctrl+v=paste_from_clipboard
+# Ghostty has no true cut action; with a selection this copies, otherwise Ctrl+X passes through.
+keybind = performable:ctrl+x=copy_to_clipboard

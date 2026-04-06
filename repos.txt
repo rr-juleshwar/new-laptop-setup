@@ -1,0 +1,15 @@
+# Rapyuta Robotics private repos
+# Format: org/repo-name — one per line
+# Used by 07-workspace.sh to auto-clone into ~/Workspace
+
+rapyuta-robotics/agent-ai
+rapyuta-robotics/agent365-mcp
+rapyuta-robotics/alligate-zoho-people-integration
+rapyuta-robotics/figma-mcp-write-server
+rapyuta-robotics/rapyuta-wms
+rapyuta-robotics/rr_design_system
+rapyuta-robotics/rr_oks
+rapyuta-robotics/rr_oks_business_application
+rapyuta-robotics/rr_system_ui
+rapyuta-robotics/sooty
+rapyuta-robotics/sooty-engine
