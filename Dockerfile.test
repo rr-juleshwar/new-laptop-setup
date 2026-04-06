@@ -1,0 +1,27 @@
+ARG UBUNTU_VERSION=20.04
+FROM ubuntu:${UBUNTU_VERSION}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+# Minimal deps needed before setup.sh can run
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      sudo curl ca-certificates git tzdata lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user (setup.sh uses sudo, not root)
+RUN useradd -m -s /bin/bash testuser \
+    && echo "testuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/testuser
+
+USER testuser
+ENV USER=testuser
+WORKDIR /home/testuser/new-laptop-setup
+
+# Copy repo into container
+COPY --chown=testuser:testuser . .
+
+# Default: dry-run + unattended (safe, no real installs)
+ENV RR_GIT_NAME="Test User"
+ENV RR_GIT_EMAIL="test@example.com"
+
+CMD ["bash", "setup.sh", "--dry-run", "--unattended"]
