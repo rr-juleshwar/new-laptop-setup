@@ -1,91 +1,117 @@
 #!/usr/bin/env bash
-# Rapyuta Robotics — Ubuntu Laptop Setup
-# Replicates the RR dev environment: zsh+Zim, git, Docker (quay.io),
-# desktop apps, dev tools, and Workspace repos.
-# Compatible with Ubuntu 20.04+
-#
-# Usage:
-#   bash setup.sh                     # Run all phases
-#   bash setup.sh --phase=03-git      # Run a single phase
-#   bash setup.sh --phase=03-git --phase=04-docker  # Run specific phases
-#   bash setup.sh --list              # List all phases
+# setup.sh — Rapyuta Robotics Ubuntu Laptop Setup (orchestrator)
+# Usage: sudo -E bash setup.sh [options]
+# Options:
+#   --phase=N       Run only phase N (e.g. --phase=3)
+#   --skip=N[,M]    Skip phase(s) (e.g. --skip=4,6)
+#   --dry-run       Print what would happen without making changes
+#   --unattended    Non-interactive mode; reads from .env or environment
+#   --list          Show available phases and exit
+#   --help          Show this help and exit
 
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/scripts/00-helpers.sh"
+export RR_SCRIPT_DIR="$SCRIPT_DIR"
 
-# ── Argument parsing ─────────────────────────────────────────────────────────
-PHASES=()
+# ── Parse arguments ───────────────────────────────────────────────────────────
+PHASE_ONLY=""
+SKIP_PHASES=""
+export DRY_RUN="false"
+export UNATTENDED="false"
+SHOW_LIST=false
+
 for arg in "$@"; do
   case "$arg" in
-    --phase=*) PHASES+=("${arg#*=}") ;;
-    --list)
-      echo "Available phases:"
-      echo "  01-system    System packages & essentials"
-      echo "  02-zsh       ZSH + Zim shell framework + dotfiles"
-      echo "  03-git       Git config + GitHub CLI"
-      echo "  04-docker    Docker CE + quay.io registry"
-      echo "  05-apps      Desktop apps (Slack, Firefox, Ghostty, VSCode)"
-      echo "  06-devtools  Developer tools (NVM, Node.js, bun)"
-      echo "  07-workspace Workspace folder + SSH key + repo list"
-      exit 0
-      ;;
+    --phase=*) PHASE_ONLY="${arg#*=}" ;;
+    --skip=*)  SKIP_PHASES="${arg#*=}" ;;
+    --dry-run) DRY_RUN="true" ;;
+    --unattended) UNATTENDED="true" ;;
+    --list) SHOW_LIST=true ;;
     --help|-h)
-      echo "Usage: bash setup.sh [--phase=PHASE_ID ...] [--list]"
+      head -10 "$0" | grep '^#' | sed 's/^# //'
       exit 0
       ;;
     *)
-      log_error "Unknown argument: $arg"
+      echo "Unknown argument: $arg (try --help)"
       exit 1
       ;;
   esac
 done
 
-# ── Pre-flight ────────────────────────────────────────────────────────────────
+# ── Source helpers ─────────────────────────────────────────────────────────────
+source "$SCRIPT_DIR/scripts/00-helpers.sh"
+
+# ── Phase definitions ─────────────────────────────────────────────────────────
+ALL_PHASES=(
+  "01:System Packages:$SCRIPT_DIR/scripts/01-system.sh"
+  "02:ZSH & Dotfiles:$SCRIPT_DIR/scripts/02-zsh.sh"
+  "03:Git & GitHub CLI:$SCRIPT_DIR/scripts/03-git.sh"
+  "04:Docker & Registry:$SCRIPT_DIR/scripts/04-docker.sh"
+  "05:Desktop Apps:$SCRIPT_DIR/scripts/05-apps.sh"
+  "06:Dev Tools (NVM/Node):$SCRIPT_DIR/scripts/06-devtools.sh"
+  "07:Workspace & Repos:$SCRIPT_DIR/scripts/07-workspace.sh"
+  "08:Post-Install Verify:$SCRIPT_DIR/scripts/08-verify.sh"
+)
+
+# ── --list ────────────────────────────────────────────────────────────────────
+if $SHOW_LIST; then
+  echo "Available phases:"
+  for phase_entry in "${ALL_PHASES[@]}"; do
+    IFS=':' read -r id name _ <<< "$phase_entry"
+    echo "  $id  $name"
+  done
+  exit 0
+fi
+
+# ── Build skip set ────────────────────────────────────────────────────────────
+declare -A SKIP_SET
+if [[ -n "$SKIP_PHASES" ]]; then
+  IFS=',' read -ra parts <<< "$SKIP_PHASES"
+  for p in "${parts[@]}"; do
+    # Zero-pad to 2 digits for matching
+    SKIP_SET[$(printf "%02d" "$p")]=1
+  done
+fi
+
+# ── Banner + pre-checks ──────────────────────────────────────────────────────
 print_banner
 check_ubuntu_version
 
-# Gather config upfront so phases can run unattended
+# ── Load .env if present ──────────────────────────────────────────────────────
+load_env_file "$SCRIPT_DIR/.env"
+
+# ── Prompt for config (unless --unattended) ───────────────────────────────────
 prompt_setup_config
 
-export RR_SCRIPT_DIR="$SCRIPT_DIR"
+# ── ERR trap for this script ─────────────────────────────────────────────────
+trap '_err_handler $LINENO "${BASH_SOURCE[0]:-setup.sh}" "main" "$?"' ERR
 
-# ── Phase runner ──────────────────────────────────────────────────────────────
-declare -a ALL_PHASES=(
-  "01-system:System packages & essentials"
-  "02-zsh:ZSH + Zim shell framework"
-  "03-git:Git config + GitHub CLI"
-  "04-docker:Docker CE + quay.io"
-  "05-apps:Desktop apps (Slack, Firefox, Ghostty, VSCode)"
-  "06-devtools:Developer tools (NVM, Node.js, bun)"
-  "07-workspace:Workspace folder & repository setup"
-)
+# ── Run phases ────────────────────────────────────────────────────────────────
+for phase_entry in "${ALL_PHASES[@]}"; do
+  IFS=':' read -r phase_id phase_name phase_script <<< "$phase_entry"
 
-for phase_def in "${ALL_PHASES[@]}"; do
-  phase_id="${phase_def%%:*}"
-  phase_name="${phase_def##*:}"
-
-  # If specific phases were requested, skip others
-  if [[ ${#PHASES[@]} -gt 0 ]]; then
-    match=false
-    for p in "${PHASES[@]}"; do
-      [[ "$p" == "$phase_id" ]] && match=true && break
-    done
-    $match || continue
+  # --phase= filter
+  if [[ -n "$PHASE_ONLY" ]]; then
+    if [[ "$phase_id" != "$(printf "%02d" "$PHASE_ONLY")" ]]; then
+      continue
+    fi
   fi
 
-  run_phase "$phase_id" "$phase_name" "$SCRIPT_DIR/scripts/$phase_id.sh"
+  # --skip= filter
+  if [[ -v "SKIP_SET[$phase_id]" ]]; then
+    log_info "Skipping phase $phase_id ($phase_name) — per --skip flag"
+    continue
+  fi
+
+  run_phase "$phase_id" "$phase_name" "$phase_script"
 done
 
-# ── Done ─────────────────────────────────────────────────────────────────────
+# ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
-log_success "🎉 Setup complete!"
+log_header "🎉  Setup Complete!"
+log_info "Some changes require logging out and back in to take effect:"
+log_step "ZSH default shell change"
+log_step "Docker group membership"
 echo ""
-log_info "Remaining manual steps:"
-echo "  1. Reload shell:       exec zsh"
-echo "  2. GitHub CLI auth:    gh auth login"
-echo "  3. Generate SSH key:   ssh-keygen -t ed25519 -C '${RR_GIT_EMAIL:-your@email.com}'"
-echo "  4. Add SSH key to GitHub: cat ~/.ssh/id_ed25519.pub  →  github.com/settings/keys"
-echo "  5. Clone repos:        bash $SCRIPT_DIR/scripts/07-workspace.sh"
-echo ""
+log_info "Run 'exec zsh' to start a ZSH session now."
