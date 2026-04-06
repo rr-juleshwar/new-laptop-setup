@@ -49,9 +49,11 @@ for ext in "${EXTENSIONS[@]}"; do
   if code --list-extensions 2>/dev/null | grep -qi "^${ext}$"; then
     log_info "  $ext — already installed"
   else
-    run code --install-extension "$ext" --force 2>/dev/null && \
-      log_step "  Installed: $ext" || \
+    if run code --install-extension "$ext" --force 2>/dev/null; then
+      log_step "  Installed: $ext"
+    else
       log_warning "  Failed to install: $ext"
+    fi
   fi
 done
 log_success "VSCode extensions configured"
@@ -121,10 +123,12 @@ install_ghostty_flatpak() {
 if ! has_cmd ghostty; then
   MAJOR="${UBUNTU_VERSION%%.*}"
   if [[ "$MAJOR" -ge 22 ]]; then
-    install_ghostty_apt && log_success "Ghostty installed" || {
+    if install_ghostty_apt; then
+      log_success "Ghostty installed"
+    else
       log_warning "Ghostty apt install failed — trying Flatpak"
       install_ghostty_flatpak
-    }
+    fi
   else
     log_warning "Ubuntu 20.04: using Flatpak for Ghostty"
     install_ghostty_flatpak

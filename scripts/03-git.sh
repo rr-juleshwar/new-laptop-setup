@@ -31,7 +31,7 @@ else
     -e "s|{{GIT_USER_EMAIL}}|$GIT_EMAIL|g" \
     "$REPO_ROOT/dotfiles/gitconfig.template" > "$HOME/.gitconfig"
 fi
-log_success "~/.gitconfig configured for $GIT_NAME <$GIT_EMAIL>"
+log_success "$HOME/.gitconfig configured for $GIT_NAME <$GIT_EMAIL>"
 
 # ── GitHub CLI ────────────────────────────────────────────────────────────────
 if ! has_cmd gh; then
