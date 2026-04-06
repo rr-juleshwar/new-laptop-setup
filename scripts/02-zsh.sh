@@ -1,46 +1,61 @@
 #!/usr/bin/env bash
-# 02-zsh.sh — Install ZSH, copy dotfiles, set default shell, bootstrap Zim
-set -euo pipefail
+# 02-zsh.sh — ZSH + Zim framework + dotfile deployment via GNU Stow
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/00-helpers.sh"
+strict_mode
 
-DOTFILES="$REPO_ROOT/dotfiles"
+# ── Install zsh ───────────────────────────────────────────────────────────────
+apt_ensure zsh
 
-# ── ZSH already installed by 01-system, make it the default shell ─────────────
-if [[ "$SHELL" != "$(which zsh)" ]]; then
-  log_step "Setting ZSH as default shell"
-  chsh -s "$(which zsh)" "$USER"
-  log_success "Default shell set to $(which zsh) — takes effect on next login"
+# ── Set zsh as default shell ──────────────────────────────────────────────────
+CURRENT_SHELL="$(getent passwd "$USER" | cut -d: -f7)"
+if [[ "$CURRENT_SHELL" != *zsh ]]; then
+  log_step "Setting zsh as default shell"
+  run_sudo chsh -s "$(which zsh)" "$USER"
+  log_success "Default shell changed to zsh"
 else
-  log_info "ZSH is already the default shell"
+  log_info "zsh is already the default shell"
 fi
 
-# ── Install dotfiles ───────────────────────────────────────────────────────────
-log_step "Installing .zshrc"
-cp "$DOTFILES/zshrc" "$HOME/.zshrc"
+# ── Deploy dotfiles via GNU Stow ─────────────────────────────────────────────
+apt_ensure stow
 
-log_step "Installing .zimrc"
-cp "$DOTFILES/zimrc" "$HOME/.zimrc"
+log_step "Deploying dotfiles via GNU Stow"
 
-log_step "Installing ZSH alias files"
+# Remove existing files that would conflict with stow symlinks
+STOW_TARGETS=(
+  "$HOME/.zshrc"
+  "$HOME/.zimrc"
+  "$HOME/.config/zsh/aliases/general.zsh"
+  "$HOME/.config/zsh/aliases/git.zsh"
+  "$HOME/.config/zsh/aliases/ubuntu-wayland.zsh"
+  "$HOME/.config/ghostty/config"
+)
+
+for target in "${STOW_TARGETS[@]}"; do
+  if [[ -f "$target" && ! -L "$target" ]]; then
+    log_info "  Backing up $target → ${target}.bak"
+    mv "$target" "${target}.bak"
+  fi
+done
+
+# Ensure parent dirs exist (stow won't create intermediate dirs on older versions)
 mkdir -p "$HOME/.config/zsh/aliases"
-cp "$DOTFILES/zsh-aliases/general.zsh"         "$HOME/.config/zsh/aliases/general.zsh"
-cp "$DOTFILES/zsh-aliases/git.zsh"             "$HOME/.config/zsh/aliases/git.zsh"
-cp "$DOTFILES/zsh-aliases/ubuntu-wayland.zsh"  "$HOME/.config/zsh/aliases/ubuntu-wayland.zsh"
+mkdir -p "$HOME/.config/ghostty"
 
-# ── Zim will self-bootstrap on first interactive ZSH session ──────────────────
-# Pre-download zimfw.zsh now so the first shell launch is faster.
-ZIM_HOME="$HOME/.zim"
-if [[ ! -e "$ZIM_HOME/zimfw.zsh" ]]; then
-  log_step "Pre-downloading Zim plugin manager"
-  mkdir -p "$ZIM_HOME"
-  curl -fsSL --create-dirs -o "$ZIM_HOME/zimfw.zsh" \
-    https://github.com/zimfw/zimfw/releases/latest/download/zimfw.zsh
-  log_success "Zim downloaded — modules will install on first 'zsh' launch"
+# Stow packages: zsh and ghostty (relative to dotfiles/)
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo -e "${YELLOW}[DRY-RUN]${NC} stow -d $REPO_ROOT/dotfiles -t $HOME --restow zsh ghostty"
 else
-  log_info "Zim already present at $ZIM_HOME"
+  stow -d "$REPO_ROOT/dotfiles" -t "$HOME" --restow zsh ghostty
 fi
 
-log_success "ZSH dotfiles installed"
-log_info "Run 'exec zsh' after setup completes to activate"
+log_success "Dotfiles deployed via Stow"
+log_info "  ~/.zshrc → dotfiles/zsh/.zshrc (symlink)"
+log_info "  ~/.zimrc → dotfiles/zsh/.zimrc (symlink)"
+log_info "  ~/.config/ghostty/config → dotfiles/ghostty/... (symlink)"
+
+# ── Zim bootstrap note ────────────────────────────────────────────────────────
+log_info "Zim will auto-install on first zsh launch (bootstrap block in .zshrc)"
+log_info "Run 'zsh' now to trigger Zim module installation"
