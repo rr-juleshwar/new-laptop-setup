@@ -61,20 +61,20 @@ if [[ "$CLONE_REPOS" =~ ^[Yy]|^$ ]]; then
 
     if [[ -d "$DEST/.git" ]]; then
       log_info "  $REPO_NAME — already cloned"
-      (( SKIPPED++ ))
+      (( SKIPPED++ )) || true
       continue
     fi
 
     log_step "  Cloning $REPO_NAME"
     if [[ "$DRY_RUN" == "true" ]]; then
       echo -e "${YELLOW}[DRY-RUN]${NC}   git clone $repo $DEST"
-      (( CLONED++ ))
+      (( CLONED++ )) || true
     else
       if git clone "$repo" "$DEST" 2>/dev/null; then
-        (( CLONED++ ))
+        (( CLONED++ )) || true
       else
         log_warning "  Failed to clone $REPO_NAME (SSH key not on GitHub yet?)"
-        (( FAILED++ ))
+        (( FAILED++ )) || true
       fi
     fi
   done < "$REPOS_FILE"

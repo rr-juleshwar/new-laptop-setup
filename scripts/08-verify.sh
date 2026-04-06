@@ -5,16 +5,21 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/00-helpers.sh"
 strict_mode
 
+if [[ "${DRY_RUN:-false}" == "true" ]]; then
+  log_info "Skipping verification in dry-run mode"
+  exit 0
+fi
+
 PASS=0; FAIL=0; WARN=0
 
 check() {
   local label="$1"; shift
   if "$@" &>/dev/null; then
     echo -e "  ${GREEN}✓${NC} $label"
-    ((PASS++))
+    (( PASS++ )) || true
   else
     echo -e "  ${RED}✗${NC} $label"
-    ((FAIL++))
+    (( FAIL++ )) || true
   fi
 }
 
@@ -22,10 +27,10 @@ check_warn() {
   local label="$1"; shift
   if "$@" &>/dev/null; then
     echo -e "  ${GREEN}✓${NC} $label"
-    ((PASS++))
+    (( PASS++ )) || true
   else
     echo -e "  ${YELLOW}⚠${NC} $label (optional)"
-    ((WARN++))
+    (( WARN++ )) || true
   fi
 }
 

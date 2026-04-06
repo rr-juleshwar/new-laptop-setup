@@ -12,7 +12,8 @@ apt_ensure zsh
 CURRENT_SHELL="$(getent passwd "$USER" | cut -d: -f7)"
 if [[ "$CURRENT_SHELL" != *zsh ]]; then
   log_step "Setting zsh as default shell"
-  run_sudo chsh -s "$(which zsh)" "$USER"
+  ZSH_PATH="$(which zsh 2>/dev/null || echo /usr/bin/zsh)"
+  run_sudo chsh -s "$ZSH_PATH" "$USER"
   log_success "Default shell changed to zsh"
 else
   log_info "zsh is already the default shell"

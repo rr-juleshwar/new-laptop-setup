@@ -43,7 +43,11 @@ if ! has_cmd gh; then
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
   run_sudo apt-get update -qq
   apt_ensure gh
-  log_success "gh $(gh --version | head -1) installed"
+  if has_cmd gh; then
+    log_success "gh $(gh --version | head -1) installed"
+  else
+    log_success "gh  installed"
+  fi
 else
   log_info "gh already installed — skipping"
 fi
